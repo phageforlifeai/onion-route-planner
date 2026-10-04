@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onion Route Planner – Chennai</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">🧅</span><div><h1>Onion Route Planner</h1><small>Chennai · daily delivery routing</small></div></div>
+  <div class="topbar-right">
+    <span id="traffic-chip" class="chip">…</span>
+    <button class="btn ghost" id="btn-print" title="Print the plan">🖨 Print</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ============ LEFT PANEL ============ -->
+  <aside class="panel">
+    <nav class="tabs">
+      <button class="tab active" data-tab="plan">📦 Today's plan</button>
+      <button class="tab" data-tab="customers">👥 Customers</button>
+      <button class="tab" data-tab="settings">⚙️ Settings</button>
+      <button class="tab" data-tab="help">❓ Help</button>
+    </nav>
+
+    <!-- ---------- PLAN ---------- -->
+    <section id="tab-plan" class="tabpane active">
+      <div class="grid4">
+        <label>Date<input type="date" id="plan-date"></label>
+        <label>Departure<input type="time" id="plan-depart"></label>
+        <label>Strategy
+          <select id="plan-strategy">
+            <option value="lowest_cost">Lowest total km/time</option>
+            <option value="fewest_vehicles">Fewest vehicles</option>
+            <option value="balanced">Balanced workload</option>
+          </select>
+        </label>
+        <label>Minimise
+          <select id="plan-objective">
+            <option value="time">Driving time</option>
+            <option value="distance">Distance (km)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="section-title">Orders for the day <span id="orders-count" class="muted"></span></div>
+      <div class="table-wrap">
+        <table class="orders" id="orders-table">
+          <colgroup><col><col style="width:66px"><col style="width:88px"><col style="width:88px"><col style="width:50px"><col style="width:28px"></colgroup>
+          <thead><tr><th>Customer</th><th>Qty kg</th><th>From</th><th>To</th><th title="Unloading minutes at this stop (blank = default)">Svc</th><th></th></tr></thead>
+          <tbody id="orders-body"></tbody>
+        </table>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="btn-add-order">＋ Add order</button>
+        <button class="btn ghost" id="btn-add-regulars" title="Add every customer that has a default quantity">Add all regulars</button>
+        <label class="btn ghost file-btn">⬆ Import Excel<input type="file" id="file-import" accept=".xlsx" hidden></label>
+        <a class="btn ghost" href="/api/template.xlsx">⬇ Template</a>
+        <button class="btn ghost danger" id="btn-clear-orders">Clear</button>
+      </div>
+      <div id="orders-totals" class="totals"></div>
+      <button class="btn primary big" id="btn-optimize">⚡ Optimise routes</button>
+      <div id="opt-status" class="status"></div>
+    </section>
+
+    <!-- ---------- CUSTOMERS ---------- -->
+    <section id="tab-customers" class="tabpane">
+      <div class="btnrow space-between">
+        <input type="search" id="cust-search" placeholder="Search name / area…" style="flex:1">
+        <button class="btn" id="btn-new-cust">＋ New customer</button>
+      </div>
+      <form id="cust-form" class="card hidden" autocomplete="off">
+        <input type="hidden" id="cf-id">
+        <div class="grid2">
+          <label>Name *<input id="cf-name" required placeholder="Hotel / shop name"></label>
+          <label>Area<input id="cf-area" placeholder="e.g. Mylapore"></label>
+        </div>
+        <label>Address, landmark, or paste a Google Maps link / "lat, lng"
+          <div class="inline"><input id="cf-address" placeholder="e.g. Kapaleeshwarar Temple, Mylapore"><button type="button" class="btn" id="btn-geocode">🔍 Find</button></div>
+        </label>
+        <div class="grid3">
+          <label>Latitude<input id="cf-lat" type="number" step="any"></label>
+          <label>Longitude<input id="cf-lng" type="number" step="any"></label>
+          <label>&nbsp;<button type="button" class="btn ghost" id="btn-pick">📍 Pick on map</button></label>
+        </div>
+        <div id="cf-geo-msg" class="muted small"></div>
+        <div class="grid3">
+          <label>Phone<input id="cf-phone"></label>
+          <label>Default qty (kg)<input id="cf-qty" type="number" min="0" step="5"></label>
+          <label>Notes<input id="cf-notes" placeholder="gate, contact…"></label>
+        </div>
+        <div class="grid2">
+          <label>Default window from<input id="cf-from" type="time"></label>
+          <label>Default window to<input id="cf-to" type="time"></label>
+        </div>
+        <div class="btnrow">
+          <button type="submit" class="btn primary">💾 Save customer</button>
+          <button type="button" class="btn ghost" id="btn-cust-cancel">Cancel</button>
+        </div>
+      </form>
+      <div class="table-wrap">
+        <table class="list" id="cust-table">
+          <thead><tr><th>Name</th><th>Area</th><th>Default</th><th>Window</th><th></th></tr></thead>
+          <tbody id="cust-body"></tbody>
+        </table>
+      </div>
+      <div class="btnrow">
+        <button class="btn ghost" id="btn-geocode-missing">🔍 Geocode all missing</button>
+        <span class="muted small">Tip: pasting a Google Maps share link is the most accurate way to add a customer.</span>
+      </div>
+    </section>
+
+    <!-- ---------- SETTINGS ---------- -->
+    <section id="tab-settings" class="tabpane">
+      <div class="section-title">Depot (loading point)</div>
+      <div class="grid2">
+        <label>Name<input id="st-depot-name"></label>
+        <label>Address<div class="inline"><input id="st-depot-address"><button class="btn" id="btn-depot-geocode" type="button">🔍</button></div></label>
+      </div>
+      <div class="grid3">
+        <label>Latitude<input id="st-depot-lat" type="number" step="any"></label>
+        <label>Longitude<input id="st-depot-lng" type="number" step="any"></label>
+        <label>&nbsp;<button type="button" class="btn ghost" id="btn-depot-pick">📍 Pick on map</button></label>
+      </div>
+
+      <div class="section-title">Vehicles</div>
+      <table class="list" id="veh-table"><thead><tr><th>Name</th><th>Capacity (kg)</th><th></th></tr></thead><tbody id="veh-body"></tbody></table>
+      <button class="btn ghost" id="btn-add-veh">＋ Add vehicle</button>
+
+      <div class="section-title">Planning defaults</div>
+      <div class="grid3">
+        <label>Departure time<input id="st-depart" type="time"></label>
+        <label>Max route (hours)<input id="st-hours" type="number" min="1" max="16" step="0.5"></label>
+        <label>Unloading per stop (min)<input id="st-service" type="number" min="0" step="1"></label>
+        <label>Trips per vehicle<input id="st-trips" type="number" min="1" max="4" step="1" title="Allow a vehicle to return to the depot, reload and go again"></label>
+        <label>Reload time (min)<input id="st-reload" type="number" min="0" step="5"></label>
+        <label>Solver time (sec)<input id="st-solver" type="number" min="2" max="120" step="1"></label>
+      </div>
+
+      <div class="section-title">Traffic &amp; travel times</div>
+      <label>Source
+        <select id="st-source">
+          <option value="auto">Auto – Google if a key is set, else OpenStreetMap</option>
+          <option value="google">Google Maps (historic traffic)</option>
+          <option value="osrm">OpenStreetMap roads + Chennai traffic profile (free)</option>
+          <option value="haversine">Offline estimate (no internet)</option>
+        </select>
+      </label>
+      <label>Google Maps Platform API key <span class="muted small">(Distance Matrix + Geocoding APIs enabled)</span>
+        <input id="st-gkey" type="password" placeholder="AIza…" autocomplete="off">
+      </label>
+      <div class="grid3">
+        <label>Google traffic model
+          <select id="st-gmodel"><option value="best_guess">best guess</option><option value="pessimistic">pessimistic</option><option value="optimistic">optimistic</option></select>
+        </label>
+        <label>Sample traffic at +min after departure<input id="st-goffset" type="number" min="0" step="5"></label>
+        <label>OSM base factor<input id="st-osrmf" type="number" min="0.8" max="2" step="0.05" title="OpenStreetMap free-flow times × this factor (Indian roads ≈ 1.1)"></label>
+      </div>
+      <details>
+        <summary>Chennai hourly congestion profile (× free-flow time)</summary>
+        <div class="profile-grid" id="profile-grid"></div>
+        <button class="btn ghost small" id="btn-profile-reset" type="button">Reset to Chennai default</button>
+      </details>
+      <div class="btnrow">
+        <button class="btn primary" id="btn-save-settings">💾 Save settings</button>
+        <span id="settings-msg" class="muted small"></span>
+      </div>
+    </section>
+
+    <!-- ---------- HELP ---------- -->
+    <section id="tab-help" class="tabpane help">
+      <h3>Daily routine (2 minutes)</h3>
+      <ol>
+        <li><b>Today's plan</b> → <i>Add all regulars</i> (or <i>Import Excel</i>), adjust quantities, remove customers with no order.</li>
+        <li>Set the date / departure, press <b>⚡ Optimise routes</b>.</li>
+        <li>For each vehicle: <b>Copy for WhatsApp</b> → send to the driver, or <b>Open in Google Maps</b> for turn-by-turn navigation. <b>⬇ Excel</b> gives printable route sheets.</li>
+      </ol>
+      <h3>What the planner optimises</h3>
+      <ul>
+        <li>Assigns orders to vehicles and sequences stops to minimise total driving time (or km) while respecting <b>vehicle capacity</b>, <b>customer time windows</b>, <b>unloading time</b> and <b>maximum route duration</b>.</li>
+        <li>If demand exceeds fleet capacity, or a customer opens late, it plans a <b>second trip</b> (reload at the depot).</li>
+        <li>It picks the <b>latest departure</b> for each vehicle that avoids waiting at customers.</li>
+        <li><b>Strategies:</b> <i>Lowest total km/time</i> – cheapest overall; <i>Fewest vehicles</i> – keep a vehicle free; <i>Balanced</i> – equalise work between drivers.</li>
+      </ul>
+      <h3>Traffic data</h3>
+      <ul>
+        <li><b>Free (default):</b> OpenStreetMap road distances × an editable hour-by-hour Chennai congestion profile.</li>
+        <li><b>Google historic traffic:</b> create a key at <i>console.cloud.google.com → APIs &amp; Services → Credentials</i>, enable <i>Distance Matrix API</i> and <i>Geocoding API</i>, paste it in Settings. Travel times for every customer pair are cached for 45 days, so with a stable customer base daily API usage is minimal.</li>
+      </ul>
+      <h3>Tips</h3>
+      <ul>
+        <li>Most accurate customer locations: open Google Maps on your phone → long-press the shop → Share → paste the link into the address box.</li>
+        <li>Leave time windows blank for "any time". Use <i>Service min</i> for slow-unloading customers.</li>
+        <li>Everything is stored in the <code>data/</code> folder – copy it to back up.</li>
+      </ul>
+    </section>
+  </aside>
+
+  <!-- ============ RIGHT: MAP + RESULTS ============ -->
+  <section class="content">
+    <div id="map"></div>
+    <div id="results" class="results"><div class="empty">Add today's orders and press <b>⚡ Optimise routes</b>. The plan, map and driver sheets will appear here.</div></div>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

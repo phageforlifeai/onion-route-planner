@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local runtime data - never committed
+# settings.json contains your Google API key; orders.json is today's orders;
+# matrix_cache.json is the travel-time cache
+data/settings.json
+data/orders.json
+data/matrix_cache.json
+*.tmp
+
+# OS / editor
+.DS_Store
+Thumbs.db
