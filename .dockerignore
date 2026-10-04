@@ -1,0 +1,8 @@
+.git
+__pycache__
+*.pyc
+data/settings.json
+data/orders.json
+data/matrix_cache.json
+data/secret.json
+*.zip

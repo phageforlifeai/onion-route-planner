@@ -1,26 +1,93 @@
 """
-storage.py – tiny JSON persistence layer (no database needed).
+storage.py – persistence layer.
 
-Everything lives in ./data/*.json so the whole tool can be copied/backed-up
-by copying one folder.
+Default: JSON files in ./data (or $DATA_DIR – point it at a persistent disk on
+cloud hosts, e.g. /data).  Optional: set $DATABASE_URL (Postgres, e.g. a free
+Neon/Supabase database) and everything is stored in one key-value table
+instead – useful for hosts without a persistent filesystem (Render free tier,
+Cloud Run …).
+
+Values stored: customers, settings, orders, matrix_cache, secret.
 """
 import json
 import os
+import secrets
+import shutil
 import threading
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BUNDLED_DATA = os.path.join(BASE_DIR, "data")          # ships with sample customers
+DATA_DIR = os.environ.get("DATA_DIR", "").strip() or BUNDLED_DATA
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 os.makedirs(DATA_DIR, exist_ok=True)
 
-_lock = threading.Lock()
+_file_lock = threading.Lock()
+_db_lock = threading.Lock()
+_pg = None
 
 
+# ---------------------------------------------------------------------------
+# Postgres key-value backend (only used when DATABASE_URL is set)
+# ---------------------------------------------------------------------------
+def _pg_exec(sql, params=(), fetch=False):
+    global _pg
+    import psycopg2  # imported lazily so it is only needed with DATABASE_URL
+
+    with _db_lock:
+        for attempt in (1, 2):   # retry once: serverless Postgres drops idle connections
+            try:
+                if _pg is None or _pg.closed:
+                    _pg = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+                    _pg.autocommit = True
+                    with _pg.cursor() as cur:
+                        cur.execute("CREATE TABLE IF NOT EXISTS kv (name TEXT PRIMARY KEY, value JSONB NOT NULL, "
+                                    "updated TIMESTAMPTZ NOT NULL DEFAULT now())")
+                with _pg.cursor() as cur:
+                    cur.execute(sql, params)
+                    return cur.fetchall() if fetch else None
+            except Exception:
+                try:
+                    _pg.close()
+                except Exception:
+                    pass
+                _pg = None
+                if attempt == 2:
+                    raise
+
+
+def _bundled(name):
+    p = os.path.join(BUNDLED_DATA, f"{name}.json")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# public API
+# ---------------------------------------------------------------------------
 def _path(name: str) -> str:
     return os.path.join(DATA_DIR, f"{name}.json")
 
 
 def load(name: str, default):
+    if DATABASE_URL:
+        rows = _pg_exec("SELECT value FROM kv WHERE name = %s", (name,), fetch=True)
+        if rows:
+            return rows[0][0]
+        seed = _bundled(name) if name == "customers" else None   # first run: sample customers
+        if seed is not None:
+            save(name, seed)
+            return seed
+        return default
+
     p = _path(name)
     if not os.path.exists(p):
+        if name == "customers" and DATA_DIR != BUNDLED_DATA:     # first run on a fresh disk
+            src = os.path.join(BUNDLED_DATA, "customers.json")
+            if os.path.exists(src):
+                shutil.copy(src, p)
+                return load(name, default)
         return default
     try:
         with open(p, encoding="utf-8") as f:
@@ -30,11 +97,34 @@ def load(name: str, default):
 
 
 def save(name: str, obj) -> None:
-    with _lock:
+    if DATABASE_URL:
+        _pg_exec("INSERT INTO kv (name, value, updated) VALUES (%s, %s::jsonb, now()) "
+                 "ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value, updated = now()",
+                 (name, json.dumps(obj, ensure_ascii=False)))
+        return
+    with _file_lock:
         tmp = _path(name) + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
         os.replace(tmp, _path(name))
+
+
+def secret_key() -> str:
+    """Stable Flask session key (env SECRET_KEY wins; else generated once and stored)."""
+    env = os.environ.get("SECRET_KEY", "").strip()
+    if env:
+        return env
+    s = load("secret", None)
+    if not s:
+        s = {"key": secrets.token_hex(32)}
+        save("secret", s)
+    return s["key"]
+
+
+def backend_description() -> str:
+    if DATABASE_URL:
+        return "Postgres"
+    return f"files in {DATA_DIR}"
 
 
 # ---------------------------------------------------------------------------
@@ -85,9 +175,11 @@ def get_settings() -> dict:
     if not s:
         s = json.loads(json.dumps(DEFAULT_SETTINGS))
         save("settings", s)
-    # back-fill any new keys added in later versions
-    for k, v in DEFAULT_SETTINGS.items():
+    for k, v in DEFAULT_SETTINGS.items():     # back-fill keys added in later versions
         s.setdefault(k, v)
+    # the Google key can also come from the environment (recommended on cloud hosts)
+    if not s.get("google_api_key") and os.environ.get("GOOGLE_MAPS_API_KEY"):
+        s["google_api_key"] = os.environ["GOOGLE_MAPS_API_KEY"].strip()
     return s
 
 

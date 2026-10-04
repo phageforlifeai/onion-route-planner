@@ -14,3 +14,5 @@ data/matrix_cache.json
 # OS / editor
 .DS_Store
 Thumbs.db
+data/secret.json
+*.zip

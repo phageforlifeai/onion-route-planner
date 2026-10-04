@@ -5,6 +5,7 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+body { height: 100dvh; }
 body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; font-size: 14px; color: var(--text); background: var(--bg); display: flex; flex-direction: column; }
 h1 { font-size: 18px; margin: 0; }
 h3 { margin: 14px 0 6px; font-size: 15px; }
@@ -135,12 +136,61 @@ table.stops tr.ret td { color: var(--muted); font-style: italic; }
 .help li { margin-bottom: 6px; }
 .help code { background: #eee; padding: 1px 4px; border-radius: 4px; }
 
-@media (max-width: 980px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto auto; }
-  .panel { border-right: 0; border-bottom: 1px solid var(--line); max-height: 60vh; }
-  #map { height: 50vh; }
-  .results { overflow: visible; }
+.mnav { display: none; }
+.mob { display: none; }
+
+@media (max-width: 1100px) and (min-width: 761px) {
+  :root { --panel-w: 440px; }
+}
+
+/* ---------- phones: one view at a time + bottom bar ---------- */
+@media (max-width: 760px) {
+  .topbar { padding: 6px 12px; }
+  .brand small, #traffic-chip, #btn-print { display: none; }
+  h1 { font-size: 17px; } .logo { font-size: 24px; }
+  .layout { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .panel, .content { display: none; border: 0; }
+  body[data-view="plan"] .panel { display: flex; flex: 1; min-height: 0; overflow-y: auto; }
+  body[data-view="map"] .content, body[data-view="routes"] .content { display: flex; flex: 1; min-height: 0; }
+  body[data-view="map"] #map { height: 100%; flex: 1; }
+  body[data-view="map"] .results { display: none; }
+  body[data-view="routes"] #map { display: none; }
+  body[data-view="routes"] .results { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 10px 24px; }
+  .mnav { display: flex; background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .mnav button { flex: 1; border: 0; background: none; padding: 8px 0 6px; font-size: 20px; color: #777; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .mnav button span { font-size: 11px; font-weight: 600; }
+  .mnav button.active { color: var(--brown); border-top: 3px solid var(--orange); margin-top: -1px; }
+  .tab { font-size: 12px; padding: 9px 2px; }
+  .tabpane { padding: 10px 10px 20px; }
   .grid4 { grid-template-columns: 1fr 1fr; }
+  .grid3 { grid-template-columns: 1fr 1fr; }
+  .mob { display: initial; }
+  .desk { display: none !important; }
+
+  /* orders as cards */
+  table.orders colgroup, table.orders thead { display: none; }
+  table.orders, table.orders tbody { display: block; }
+  table.orders tr { display: grid; grid-template-columns: 1fr 1fr 1fr 44px 28px; gap: 4px 5px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: end; }
+  table.orders td { display: block; padding: 0; border: 0; }
+  table.orders td:first-child { grid-column: 1 / -1; }
+  table.orders td[data-l]::before { content: attr(data-l); display: block; font-size: 10px; color: var(--muted); margin-bottom: 1px; }
+  table.orders td:last-child { text-align: right; padding-bottom: 4px; }
+  table.orders input, table.orders select { font-size: 16px; }   /* prevents iOS zoom */
+
+  /* results */
+  .summary { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .kpi { padding: 8px 10px; } .kpi b { font-size: 17px; }
+  .vehicle header { padding: 8px 10px; gap: 6px; }
+  .vehicle header h4 { flex-basis: 100%; }
+  .vehicle .body { padding: 4px 6px 10px; }
+  table.stops { table-layout: fixed; width: 100%; }
+  table.stops th:nth-child(1), table.stops td:nth-child(1) { width: 22px; padding-left: 2px; padding-right: 2px; }
+  table.stops th:nth-child(3), table.stops td:nth-child(3) { width: 56px; }
+  table.stops th:nth-child(4), table.stops td:nth-child(4) { width: 64px; font-size: 11.5px; }
+  table.stops th:nth-child(5), table.stops td:nth-child(5) { width: 52px; }
+  table.stops .col-opt { display: none; }
+  table.stops td { word-wrap: break-word; }
+  .btnrow .btn { padding: 7px 10px; }
 }
 @media print {
   .topbar, .panel, #map, .vehicle header button, .btnrow { display: none !important; }

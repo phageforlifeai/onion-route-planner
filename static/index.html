@@ -4,10 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Onion Route Planner – Chennai</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#7b3f00">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Onion Routes">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body data-view="plan">
 <header class="topbar">
   <div class="brand"><span class="logo">🧅</span><div><h1>Onion Route Planner</h1><small>Chennai · daily delivery routing</small></div></div>
   <div class="topbar-right">
@@ -168,6 +175,8 @@
         <button class="btn primary" id="btn-save-settings">💾 Save settings</button>
         <span id="settings-msg" class="muted small"></span>
       </div>
+      <div class="muted small" id="st-info"></div>
+      <a href="/logout" id="btn-logout" class="btn ghost small hidden" style="margin-top:8px">🔒 Sign out of this device</a>
     </section>
 
     <!-- ---------- HELP ---------- -->
@@ -206,6 +215,11 @@
   </section>
 </main>
 
+<nav class="mnav">
+  <button data-view="plan" class="active">📦<span>Plan</span></button>
+  <button data-view="map">🗺️<span>Map</span></button>
+  <button data-view="routes">🚚<span>Routes</span></button>
+</nav>
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>

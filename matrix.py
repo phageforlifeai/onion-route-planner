@@ -10,7 +10,7 @@ Providers (tried in this order, automatic fallback):
   3. haversine – straight-line distance × circuity factor. Last resort, works
                  even without internet.
 
-Every origin→destination pair is cached in data/matrix_cache.json, so a stable
+Every origin→destination pair is cached (matrix_cache in the data store), so a stable
 customer base costs (almost) zero API calls on subsequent days.
 """
 import datetime as dt
@@ -22,7 +22,8 @@ import time
 
 import requests
 
-from storage import DATA_DIR, CHENNAI_PROFILE
+import storage
+from storage import CHENNAI_PROFILE
 
 OSRM_URL = "https://router.project-osrm.org"
 GOOGLE_DM_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
@@ -61,12 +62,10 @@ def shift_factor(profile, depart_hour: float, hours: float, sunday: bool = False
 # Disk cache
 # ---------------------------------------------------------------------------
 class _Cache:
-    def __init__(self, path):
-        self.path = path
+    def __init__(self):
         self.lock = threading.Lock()
         try:
-            with open(path, encoding="utf-8") as f:
-                self.data = json.load(f)
+            self.data = storage.load("matrix_cache", {}) or {}
         except Exception:
             self.data = {}
 
@@ -85,16 +84,16 @@ class _Cache:
 
     def flush(self):
         with self.lock:
-            tmp = self.path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.data, f)
-            os.replace(tmp, self.path)
+            try:
+                storage.save("matrix_cache", self.data)
+            except Exception:
+                pass   # caching is best-effort
 
     def stats(self):
         return {"pairs_cached": len(self.data)}
 
 
-CACHE = _Cache(os.path.join(DATA_DIR, "matrix_cache.json"))
+CACHE = _Cache()
 
 
 # ---------------------------------------------------------------------------

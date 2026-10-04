@@ -1,0 +1,13 @@
+# Any Linux server / VPS:   docker compose up -d      → http://<server-ip>
+services:
+  planner:
+    build: .
+    ports:
+      - "80:5000"
+    environment:
+      APP_PASSWORD: "change-me"          # team password for the web app
+      SECRET_KEY: "change-me-to-a-long-random-string"
+      # GOOGLE_MAPS_API_KEY: ""          # optional – or paste it in Settings
+    volumes:
+      - ./planner-data:/data             # customers, settings, orders persist here
+    restart: unless-stopped

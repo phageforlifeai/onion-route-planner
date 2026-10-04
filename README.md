@@ -39,6 +39,18 @@ python app.py          # or double-click run.bat (Windows) / run.sh (Mac/Linux)
 (**Today's plan → Add all regulars → ⚡ Optimise routes**). Replace them with
 your real customers in the **Customers** tab.
 
+## Share it with your team (PC + mobile)
+
+Run it in one place and everyone opens the URL in a browser – phones get a
+dedicated **Plan · Map · Routes** layout and can *Add to Home Screen*.
+Set `APP_PASSWORD` to require a team login. See **[DEPLOY.md](DEPLOY.md)** for
+the options: office PC on Wi-Fi (free), Tailscale remote access (free), Railway /
+Render cloud hosting (~$5–7/month, recommended), PythonAnywhere, or Docker on a VPS.
+
+```bash
+APP_PASSWORD=YourPassword python app.py     # Windows: set APP_PASSWORD=YourPassword && python app.py
+```
+
 ## Daily routine (≈ 2 minutes)
 
 1. **Today's plan** → *Add all regulars* (or *Import Excel* using the template), fix quantities, delete customers with no order today.
@@ -87,14 +99,17 @@ Distance Matrix – more than enough for 20 customers/day with caching.
 ## Project layout
 
 ```
-app.py          Flask server + REST API (/api/optimize, /api/customers, …)
+app.py          Flask server + REST API (/api/optimize, /api/customers, …), login
+DEPLOY.md       How to run it for the team: office PC, Tailscale, Railway/Render, Docker
+Dockerfile, Procfile, render.yaml, docker-compose.yml   deployment recipes
 solver.py       OR-Tools multi-trip CVRPTW model
 matrix.py       Travel-time matrix: Google ⇄ OSRM ⇄ offline fallback, caching, Chennai profile
 geocode.py      Address / Google-Maps-link → coordinates
 export_xlsx.py  Excel route sheets, order template, Excel import
-storage.py      JSON persistence + defaults
+storage.py      JSON-file persistence (DATA_DIR) or Postgres (DATABASE_URL) + defaults
 static/         Web UI (index.html, app.js, style.css – Leaflet map)
 data/           customers.json, settings.json, orders.json, matrix_cache.json  ← back this folder up
+static/         also: manifest + icons so phones can install it as an app
 ```
 
 ## How the model works (for the curious)

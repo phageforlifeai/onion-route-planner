@@ -29,6 +29,23 @@ function toast(msg, ms = 2600) {
 const custById = id => S.customers.find(c => c.id === id);
 const sortedCustomers = () => [...S.customers].sort((a, b) => a.name.localeCompare(b.name));
 
+/* =============================== MOBILE VIEWS =============================== */
+const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
+function setView(v) {
+  document.body.dataset.view = v;
+  $$(".mnav button").forEach(b => b.classList.toggle("active", b.dataset.view === v));
+  if (v === "map") setTimeout(() => { S.map.invalidateSize(); if (S.boundsStale && S.lastBounds) { S.map.fitBounds(S.lastBounds, { padding: [30, 30] }); S.boundsStale = false; } }, 60);
+}
+/* fit the map to points – if the map is hidden (mobile), remember and fit when it is shown */
+function fitPts(pts) {
+  if (pts.length < 2) return;
+  S.lastBounds = pts;
+  const hidden = isMobile() && document.body.dataset.view !== "map";
+  S.boundsStale = hidden;
+  if (!hidden) S.map.fitBounds(pts, { padding: [30, 30] });
+}
+function showMap(fn) { if (isMobile()) setView("map"); setTimeout(fn, isMobile() ? 120 : 0); }
+
 /* =============================== INIT =============================== */
 async function init() {
   const [settings, customers, ordersDoc] = await Promise.all([api("/api/settings"), api("/api/customers"), api("/api/orders")]);
@@ -37,6 +54,10 @@ async function init() {
   initMap(); bindTabs(); bindPlan(); bindCustomers(); bindSettings();
   renderAll();
   $("#btn-print").onclick = () => window.print();
+  $$(".mnav button").forEach(b => b.onclick = () => setView(b.dataset.view));
+  window.addEventListener("resize", () => S.map.invalidateSize());
+  if (S.settings._auth_enabled) $("#btn-logout").classList.remove("hidden");
+  $("#st-info").textContent = `Data: ${S.settings._storage || "local files"} · cached travel pairs: ${(S.settings._cache || {}).pairs_cached || 0}`;
 }
 
 function renderAll() { renderPlanHeader(); renderOrders(); renderCustomers(); renderSettings(); renderChip(); drawPending(); }
@@ -67,7 +88,7 @@ function initMap() {
     const { lat, lng } = e.latlng;
     if (S.pick === "customer") { $("#cf-lat").value = lat.toFixed(6); $("#cf-lng").value = lng.toFixed(6); $("#cf-geo-msg").textContent = "Location picked on map."; }
     if (S.pick === "depot") { $("#st-depot-lat").value = lat.toFixed(6); $("#st-depot-lng").value = lng.toFixed(6); }
-    S.pick = null; document.body.classList.remove("pick-mode"); toast("Coordinates set");
+    S.pick = null; document.body.classList.remove("pick-mode"); toast("Coordinates set"); if (isMobile()) setView("plan");
   });
 }
 function clearLayers() { S.layers.forEach(l => S.map.removeLayer(l)); S.layers = []; if (S.legend) { S.map.removeControl(S.legend); S.legend = null; } }
@@ -89,7 +110,7 @@ function drawPending() {
     const m = L.marker([c.lat, c.lng], { icon: stopIcon("•") }).bindPopup(`<b>${esc(c.name)}</b><br>${esc(o.qty_kg || "")} kg`).addTo(S.map);
     S.layers.push(m); pts.push([c.lat, c.lng]);
   });
-  if (pts.length > 1) S.map.fitBounds(pts, { padding: [30, 30] });
+  fitPts(pts);
 }
 function drawResult() {
   clearLayers();
@@ -116,12 +137,12 @@ function drawResult() {
     S.legend.onAdd = () => { const div = L.DomUtil.create("div", "legend"); div.innerHTML = legendRows.join("") + `<div><i style="background:#999;border-top:2px dashed #555;height:0"></i>dashed = 2nd trip</div>`; return div; };
     S.legend.addTo(S.map);
   }
-  if (pts.length > 1) S.map.fitBounds(pts, { padding: [30, 30] });
+  fitPts(pts);
 }
 function focusVehicle(idx) {
   const r = S.result.routes[idx]; if (!r || !r.used) return;
   const pts = r.trips.flatMap(t => t.stops.map(s => [s.lat, s.lng])); pts.push([S.result.depot.lat, S.result.depot.lng]);
-  S.map.fitBounds(pts, { padding: [40, 40] });
+  showMap(() => S.map.fitBounds(pts, { padding: [40, 40] }));
 }
 
 /* =============================== PLAN TAB =============================== */
@@ -139,10 +160,10 @@ function renderOrders() {
   const tb = $("#orders-body");
   tb.innerHTML = S.orders.map(o => `<tr data-id="${o.id}" class="${(custById(o.customer_id) || {}).lat == null && o.customer_id ? "row-nogeo" : ""}">
       <td><select data-f="customer_id">${customerOptions(o.customer_id)}</select></td>
-      <td><input type="number" data-f="qty_kg" min="0" step="5" value="${o.qty_kg ?? ""}"></td>
-      <td><input type="time" data-f="tw_from" value="${o.tw_from || ""}"></td>
-      <td><input type="time" data-f="tw_to" value="${o.tw_to || ""}"></td>
-      <td><input type="number" data-f="service_min" min="0" step="1" value="${o.service_min ?? ""}" placeholder="${S.settings.default_service_min}"></td>
+      <td data-l="Qty kg"><input type="number" data-f="qty_kg" min="0" step="5" value="${o.qty_kg ?? ""}" placeholder="kg"></td>
+      <td data-l="From"><input type="time" data-f="tw_from" value="${o.tw_from || ""}"></td>
+      <td data-l="To"><input type="time" data-f="tw_to" value="${o.tw_to || ""}"></td>
+      <td data-l="Svc"><input type="number" data-f="service_min" min="0" step="1" value="${o.service_min ?? ""}" placeholder="${S.settings.default_service_min}"></td>
       <td><button class="x" data-del title="Remove">×</button></td></tr>`).join("");
   renderTotals();
 }
@@ -218,6 +239,7 @@ async function optimize() {
       date: S.date, departure_time: $("#plan-depart").value || "05:00",
       strategy: $("#plan-strategy").value, objective: $("#plan-objective").value } });
     S.result = res; renderResults(); drawResult();
+    if (isMobile()) setView("routes");
     st.textContent = `Done in ${((Date.now() - t0) / 1000).toFixed(1)} s – ${res.summary.total_km} km, ${res.summary.vehicles_used} vehicle(s).`;
     $("#results").scrollTop = 0;
   } catch (err) { st.textContent = "✖ " + err.message; st.classList.add("err"); }
@@ -254,17 +276,19 @@ function renderResults() {
       </header><div class="body">`;
     r.trips.forEach(t => {
       if (r.trips.length > 1) h += `<div class="trip-title">Trip ${t.trip} <span>· leave depot ${t.depart} · ${t.load_kg} kg ${utilBadge(t.utilisation_pct)} · ${t.total_km} km · back ${t.return.arrival}${t.reload_wait_min ? ` · waits ${t.reload_wait_min} min at depot` : ""}</span>${t.trip > 1 ? ` <a class="btn xs ghost" href="${t.gmaps_urls[0]}" target="_blank" rel="noopener">▶ Maps trip ${t.trip}</a>` : ""}</div>`;
-      h += `<table class="stops"><thead><tr><th>#</th><th>Customer</th><th>ETA</th><th>Window</th><th class="r">Qty</th><th class="r">Left on truck</th><th class="r">Leg</th><th>Notes</th></tr></thead><tbody>`;
+      h += `<table class="stops"><thead><tr><th>#</th><th>Customer</th><th>ETA</th><th>Window</th><th class="r">Qty</th><th class="r col-opt">Left on truck</th><th class="r col-opt">Leg</th><th class="col-opt">Notes</th></tr></thead><tbody>`;
       t.stops.forEach(st => {
+        const phone = st.phone ? `<a href="tel:${esc(st.phone.replace(/\s+/g, ""))}" style="text-decoration:none">📞 ${esc(st.phone)}</a>` : "";
         h += `<tr><td class="num" style="color:${r.color}">${st.seq}</td>
-          <td><b>${esc(st.customer)}</b>${st.area ? ` <span class="muted">· ${esc(st.area)}</span>` : ""}${st.phone ? `<br><span class="muted small">📞 ${esc(st.phone)}</span>` : ""}</td>
+          <td><b>${esc(st.customer)}</b>${st.area ? ` <span class="muted">· ${esc(st.area)}</span>` : ""}${phone ? `<br><span class="muted small">${phone}</span>` : ""}
+              <span class="mob muted small"><br>${st.leg_km} km · ${st.leg_min} min · ${st.remaining_kg} kg left${st.notes ? ` · ${esc(st.notes)}` : ""}</span></td>
           <td><b>${st.arrival}</b>${st.wait_min ? `<br><span class="badge warn">wait ${st.wait_min}m</span>` : ""}</td>
           <td>${st.window ? esc(st.window) : '<span class="muted">any</span>'}</td>
-          <td class="r">${st.qty_kg} kg</td><td class="r">${st.remaining_kg} kg</td>
-          <td class="r">${st.leg_km} km<br><span class="muted small">${st.leg_min} min</span></td>
-          <td class="small">${esc(st.notes || "")}</td></tr>`;
+          <td class="r">${st.qty_kg} kg</td><td class="r col-opt">${st.remaining_kg} kg</td>
+          <td class="r col-opt">${st.leg_km} km<br><span class="muted small">${st.leg_min} min</span></td>
+          <td class="small col-opt">${esc(st.notes || "")}</td></tr>`;
       });
-      h += `<tr class="ret"><td></td><td>Return to depot</td><td>${t.return.arrival}</td><td></td><td></td><td></td><td class="r">${t.return.leg_km} km<br><span class="muted small">${t.return.leg_min} min</span></td><td></td></tr></tbody></table>`;
+      h += `<tr class="ret"><td></td><td>Return to depot <span class="mob muted small">· ${t.return.leg_km} km · ${t.return.leg_min} min</span></td><td>${t.return.arrival}</td><td></td><td></td><td class="col-opt"></td><td class="r col-opt">${t.return.leg_km} km<br><span class="muted small">${t.return.leg_min} min</span></td><td class="col-opt"></td></tr></tbody></table>`;
     });
     h += `</div></div>`;
   });
@@ -320,7 +344,7 @@ function bindCustomers() {
   $("#cust-search").oninput = renderCustomers;
   $("#btn-new-cust").onclick = () => showCustForm(null);
   $("#btn-cust-cancel").onclick = () => $("#cust-form").classList.add("hidden");
-  $("#btn-pick").onclick = () => { S.pick = "customer"; document.body.classList.add("pick-mode"); toast("Click the exact location on the map", 4000); };
+  $("#btn-pick").onclick = () => { S.pick = "customer"; document.body.classList.add("pick-mode"); showMap(() => {}); toast("Tap the exact location on the map", 4000); };
   $("#btn-geocode").onclick = async () => {
     const addr = $("#cf-address").value.trim(); if (!addr) return toast("Type an address or paste a Google Maps link first");
     $("#cf-geo-msg").textContent = "Searching…";
@@ -345,7 +369,7 @@ function bindCustomers() {
   $("#cust-body").addEventListener("click", async e => {
     const tr = e.target.closest("tr"); if (!tr) return; const c = custById(tr.dataset.id); if (!c) return;
     if (e.target.closest("[data-edit]")) showCustForm(c);
-    else if (e.target.closest("[data-locate]")) { if (c.lat != null) { S.map.setView([c.lat, c.lng], 15); L.popup().setLatLng([c.lat, c.lng]).setContent(`<b>${esc(c.name)}</b>`).openOn(S.map); } else toast("No coordinates yet – edit and press Find"); }
+    else if (e.target.closest("[data-locate]")) { if (c.lat != null) showMap(() => { S.map.setView([c.lat, c.lng], 15); L.popup().setLatLng([c.lat, c.lng]).setContent(`<b>${esc(c.name)}</b>`).openOn(S.map); }); else toast("No coordinates yet – edit and press Find"); }
     else if (e.target.closest("[data-del]")) { if (confirm(`Delete ${c.name}?`)) { S.customers = S.customers.filter(x => x.id !== c.id); S.orders = S.orders.filter(o => o.customer_id !== c.id); await saveCustomers(); scheduleSaveOrders(); } }
   });
   $("#btn-geocode-missing").onclick = async () => {
@@ -383,7 +407,7 @@ function bindSettings() {
   $("#veh-body").addEventListener("click", e => { if (e.target.closest("[data-vdel]")) { S.settings.vehicles.splice(+e.target.closest("tr").dataset.i, 1); renderVehicles(); } });
   $("#btn-add-veh").onclick = () => { const n = S.settings.vehicles.length + 1; S.settings.vehicles.push({ id: "V" + n, name: `Vehicle ${n}`, capacity_kg: S.settings.vehicles[0]?.capacity_kg || 750 }); renderVehicles(); };
   $("#btn-profile-reset").onclick = () => renderProfile([1, 1, 1, 1, 1, 1.05, 1.15, 1.35, 1.6, 1.8, 1.7, 1.55, 1.45, 1.4, 1.4, 1.5, 1.65, 1.85, 1.95, 1.9, 1.65, 1.35, 1.15, 1.05]);
-  $("#btn-depot-pick").onclick = () => { S.pick = "depot"; document.body.classList.add("pick-mode"); toast("Click the depot location on the map", 4000); };
+  $("#btn-depot-pick").onclick = () => { S.pick = "depot"; document.body.classList.add("pick-mode"); showMap(() => {}); toast("Tap the depot location on the map", 4000); };
   $("#btn-depot-geocode").onclick = async () => {
     try { const g = await api("/api/geocode", "POST", { address: $("#st-depot-address").value }); $("#st-depot-lat").value = g.lat.toFixed(6); $("#st-depot-lng").value = g.lng.toFixed(6); S.map.setView([g.lat, g.lng], 15); toast("Found: " + g.display, 4000); }
     catch (err) { alert(err.message); }
