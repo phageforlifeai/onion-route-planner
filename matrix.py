@@ -290,9 +290,11 @@ def build_matrix(points, settings, depart_dt):
     source = settings.get("traffic_source", "auto")
     key = (settings.get("google_api_key") or "").strip()
     if source == "auto":
-        order = (["google"] if key else []) + ["osrm", "haversine"]
+        order = (["historical", "google"] if key else ["historical"]) + ["osrm", "haversine"]
     elif source == "google":
-        order = ["google", "osrm", "haversine"]
+        order = ["google", "historical", "osrm", "haversine"]
+    elif source == "historical":
+        order = ["historical", "google", "osrm", "haversine"]
     elif source == "osrm":
         order = ["osrm", "haversine"]
     else:
@@ -303,6 +305,8 @@ def build_matrix(points, settings, depart_dt):
         try:
             if src == "google":
                 res = google_matrix(points, key, depart_dt, settings)
+            elif src == "historical":
+                res = historical_matrix(points, settings, depart_dt)
             elif src == "osrm":
                 res = osrm_matrix(points, settings, depart_dt)
             else:
