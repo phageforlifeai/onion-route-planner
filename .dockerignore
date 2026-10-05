@@ -6,3 +6,4 @@ data/orders.json
 data/matrix_cache.json
 data/secret.json
 *.zip
+.env

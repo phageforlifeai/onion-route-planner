@@ -19,3 +19,6 @@ data/secret.json
 
 # streamlit secrets
 .streamlit/secrets.toml
+
+# office-PC settings (password, database link)
+.env

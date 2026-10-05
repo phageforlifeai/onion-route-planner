@@ -90,16 +90,14 @@ streamlit run streamlit_app.py          # uses ./data/*.json like the Flask app
 
 ## A. Office PC, same Wi-Fi (simplest)
 
-1. On the PC: `pip install -r requirements.txt`, then start **with a password**:
-   * Windows (Command Prompt): `set APP_PASSWORD=YourPassword && python app.py`
-   * Mac/Linux: `APP_PASSWORD=YourPassword python3 app.py`
-2. Allow it when Windows Firewall asks ("Allow access" on private networks).
-3. Find the PC's address: `ipconfig` (Windows) → *IPv4 Address*, e.g. `192.168.1.25`.
-4. On any phone/PC on the **same Wi-Fi** open `http://192.168.1.25:5000` → sign in.
-5. Phone: browser menu → **Add to Home Screen** – it then opens like an app.
-
-Tip: give the PC a fixed IP in your router so the address never changes, and
-create a shortcut `run_shared.bat` containing the two lines in step 1.
+1. Install Python from <https://www.python.org/downloads/> (tick **Add python.exe to PATH**).
+2. Unzip the project to e.g. `C:\onion-route-planner` and double-click **`run.bat`**.
+   First run: it creates `.env` and opens it in Notepad → set `APP_PASSWORD=…` and, to share
+   data with the Streamlit Cloud app, `DATABASE_URL=` the same Neon string. Save and run again.
+3. The window prints two addresses: `http://localhost:5000` (this PC) and
+   `http://192.168.x.x:5000` (phones/PCs on the same Wi-Fi). Keep the window open.
+4. Optional: make it start with Windows – press `Win+R`, type `shell:startup`, and drop a
+   shortcut to `run.bat` in that folder.
 
 ## B. Office PC + Tailscale (access from anywhere, free)
 

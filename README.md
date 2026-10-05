@@ -23,16 +23,20 @@ The solver is **Google OR-Tools** (constraint programming + guided local
 search) – the same engine used by large logistics companies. For < 50 stops it
 finds near-optimal plans in a few seconds.
 
-## Quick start
+## Quick start (office PC)
+
+1. Install Python 3.10+ from <https://www.python.org/downloads/> (tick **Add python.exe to PATH**).
+2. Download this project (GitHub → *Code → Download ZIP*) and unzip it, e.g. to `C:\onion-route-planner`.
+3. Double-click **`run.bat`** (Mac/Linux: `./run.sh`). The first run creates a `.env` file and opens it in
+   Notepad – set `APP_PASSWORD` (team password) and, to share data with the Streamlit Cloud copy, paste the
+   same Neon `DATABASE_URL`. Save, close, run `run.bat` again.
+4. Your browser opens <http://localhost:5000>; the black window shows the address other phones/PCs on the
+   same Wi-Fi can use (`http://192.168.x.x:5000`). Keep that window open while people use it.
 
 ```bash
-# 1. Python 3.10+ required
+# the same, by hand
 pip install -r requirements.txt
-
-# 2. Run
-python app.py          # or double-click run.bat (Windows) / run.sh (Mac/Linux)
-
-# 3. Open  http://localhost:5000
+python app.py
 ```
 
 16 sample Chennai customers are included so you can try it immediately
@@ -116,6 +120,8 @@ Distance Matrix – more than enough for 20 customers/day with caching.
 app.py          Flask server + REST API (/api/optimize, /api/customers, …), login
 streamlit_app.py  Streamlit front end (Streamlit Community Cloud) – same engine, Postgres via DATABASE_URL
 planner.py      Shared planning logic: orders → matrix → solver → routes/driver text (used by both UIs)
+.env.example    Office-PC settings template (copy to .env: APP_PASSWORD, DATABASE_URL, Google key)
+run.bat / run.sh  One-click launcher for the office PC
 DEPLOY.md       How to run it for the team: Streamlit Cloud + Neon (free), office PC, Tailscale, Railway/Render, Docker
 .streamlit/     config.toml (theme) and secrets.toml.example
 Dockerfile, Procfile, render.yaml, docker-compose.yml   deployment recipes

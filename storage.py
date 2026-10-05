@@ -17,6 +17,27 @@ import threading
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BUNDLED_DATA = os.path.join(BASE_DIR, "data")          # ships with sample customers
+
+
+def _load_env_file(path):
+    """Read KEY=VALUE lines from a .env file next to the code (office-PC setup).
+    Existing environment variables (and Streamlit secrets) always win."""
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k and v and not os.environ.get(k):
+                    os.environ[k] = v
+    except FileNotFoundError:
+        pass
+
+
+_load_env_file(os.path.join(BASE_DIR, ".env"))
+
 DATA_DIR = os.environ.get("DATA_DIR", "").strip() or BUNDLED_DATA
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 os.makedirs(DATA_DIR, exist_ok=True)
