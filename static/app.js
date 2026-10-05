@@ -219,7 +219,7 @@ function bindPlan() {
       const r = await api("/api/import", "POST", fd);
       if (r.customers) S.customers = r.customers;
       S.orders = S.orders.concat(r.orders); renderOrders(); renderCustomers(); scheduleSaveOrders(); S.result = null; drawPending();
-      let msg = `Imported ${r.orders.length} orders`; if (r.customers_created) msg += `, added ${r.customers_created} new customers`;
+      let msg = `Imported ${r.orders.length} orders`; if (r.customers_created) msg += `, added ${r.customers_created} new customers`; if (r.customers_updated) msg += `, updated ${r.customers_updated} customers`;
       if (r.problems.length) { msg += `. Problems:\n• ` + r.problems.join("\n• "); alert(msg); } else toast(msg);
     } catch (err) { alert("Import failed: " + err.message); }
     e.target.value = "";

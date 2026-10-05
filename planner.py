@@ -9,7 +9,7 @@ import math
 import time
 import uuid
 
-from geocode import geocode
+from geocode import geocode, parse_latlng
 from matrix import build_matrix, route_geometry
 from solver import baseline_nearest_neighbour, solve_vrp
 
@@ -289,26 +289,102 @@ def plan(orders, settings, customers_list):
 # ---------------------------------------------------------------------------
 # Excel import → orders (creates & geocodes brand-new customers that have an address)
 # ---------------------------------------------------------------------------
-def import_orders(raw, customers, settings):
+def _num(v):
+    try:
+        return float(str(v).replace(",", ".")) if str(v).strip() not in ("", "None") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _locate(text, settings, allow_lookup=True):
+    """'lat, lng' / Google Maps link → coordinates instantly; plain address → geocoder (if allowed)."""
+    ll = parse_latlng(text or "")
+    if ll:
+        return {"lat": ll[0], "lng": ll[1], "source": "coordinates"}
+    if allow_lookup and (text or "").strip():
+        g = geocode(text, settings)
+        time.sleep(1.0)                       # Nominatim fair use
+        return g
+    return None
+
+
+def import_customers(raw, customers, settings):
+    """Upsert the customer master from the 'Customers' sheet. Returns (created, updated, problems)."""
     by_name = {c["name"].strip().lower(): c for c in customers}
-    orders, problems, created = [], [], 0
+    created, updated, problems = 0, 0, []
+    for r in raw:
+        name = r["name"].strip()
+        c = by_name.get(name.lower())
+        is_new = c is None
+        if is_new:
+            c = {"id": uuid.uuid4().hex[:8], "name": name, "area": "", "address": "", "lat": None, "lng": None,
+                 "phone": "", "default_qty_kg": 0, "default_tw_from": "", "default_tw_to": "", "notes": ""}
+        before = dict(c)
+        for k in ("area", "address", "phone", "notes"):
+            if r.get(k, "") != "":
+                c[k] = r[k]
+        for k in ("default_tw_from", "default_tw_to"):
+            if r.get(k, "") != "":
+                c[k] = r[k][:5] if hhmm_to_s(r[k][:5]) is not None else c.get(k, "")
+        q = _num(r.get("default_qty_kg"))
+        if q is not None and q >= 0:
+            c["default_qty_kg"] = q
+        lat, lng = _num(r.get("lat")), _num(r.get("lng"))
+        if lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180:
+            c["lat"], c["lng"] = lat, lng
+        else:
+            addr_changed = r.get("address", "") != "" and r["address"] != before.get("address", "")
+            if is_new or not (c.get("lat") and c.get("lng")) or addr_changed:
+                g = _locate(r.get("address", ""), settings)
+                if g:
+                    c["lat"], c["lng"] = g["lat"], g["lng"]
+                elif r.get("address", ""):
+                    problems.append(f"'{name}': location '{r['address']}' not found – add Lat/Lng or paste a Google Maps link")
+        if is_new:
+            customers.append(c)
+            by_name[name.lower()] = c
+            created += 1
+            if not (c.get("lat") and c.get("lng")):
+                problems.append(f"'{name}' was added without coordinates – it cannot be routed until you add them")
+        elif c != before:
+            updated += 1
+    return created, updated, problems
+
+
+def import_orders(raw, customers, settings):
+    """Orders sheet → orders list. Returns (orders, problems, created, updated).
+    The Location column creates new customers, and moves/locates existing ones when it holds coordinates,
+    a Google Maps link, or an address for a customer that has no coordinates yet."""
+    by_name = {c["name"].strip().lower(): c for c in customers}
+    orders, problems, created, updated = [], [], 0, 0
     for r in raw:
         c = by_name.get(r["customer_name"].strip().lower())
-        if not c and r.get("address"):
-            g = geocode(r["address"], settings)
+        loc = (r.get("address") or "").strip()
+        if not c and loc:
+            g = _locate(loc, settings)
             if g:
                 c = {"id": uuid.uuid4().hex[:8], "name": r["customer_name"].strip(), "area": "",
-                     "address": r["address"], "lat": g["lat"], "lng": g["lng"], "phone": "",
-                     "default_qty_kg": r["qty_kg"], "default_tw_from": r["tw_from"],
+                     "address": "" if g.get("source") == "coordinates" else loc, "lat": g["lat"], "lng": g["lng"],
+                     "phone": "", "default_qty_kg": r["qty_kg"], "default_tw_from": r["tw_from"],
                      "default_tw_to": r["tw_to"], "notes": "auto-added from Excel import"}
                 customers.append(c)
                 by_name[c["name"].lower()] = c
                 created += 1
-                time.sleep(1.0)
+        elif c and loc:
+            exact = parse_latlng(loc)
+            if exact:
+                if (c.get("lat"), c.get("lng")) != exact:
+                    c["lat"], c["lng"] = exact
+                    updated += 1
+            elif not (c.get("lat") and c.get("lng")):
+                g = _locate(loc, settings)
+                if g:
+                    c["lat"], c["lng"], c["address"] = g["lat"], g["lng"], loc
+                    updated += 1
         if not c:
-            problems.append(f"'{r['customer_name']}' is not in your customer list (add it, or fill the Address column)")
+            problems.append(f"'{r['customer_name']}' is not in your customer list (add it, or fill the Location column)")
             continue
         orders.append({"id": uuid.uuid4().hex[:8], "customer_id": c["id"], "qty_kg": r["qty_kg"],
                        "tw_from": r["tw_from"], "tw_to": r["tw_to"],
                        "service_min": r["service_min"], "notes": r["notes"]})
-    return orders, problems, created
+    return orders, problems, created, updated

@@ -49,10 +49,10 @@ import pandas as pd  # noqa: E402
 from streamlit_folium import st_folium  # noqa: E402
 
 import storage  # noqa: E402
-from export_xlsx import build_route_workbook, build_template, parse_orders_xlsx  # noqa: E402
+from export_xlsx import build_route_workbook, build_template, parse_customers_xlsx, parse_orders_xlsx  # noqa: E402
 from geocode import geocode  # noqa: E402
 from matrix import CACHE  # noqa: E402
-from planner import PlanError, import_orders, plan  # noqa: E402
+from planner import PlanError, import_customers, import_orders, plan  # noqa: E402
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
@@ -373,12 +373,15 @@ if page == PAGES[0]:
             if up is not None and ss.get("last_upload") != up.file_id:
                 ss.last_upload = up.file_id
                 try:
-                    with st.spinner("Importing…"):
-                        raw = parse_orders_xlsx(up.getvalue())
-                        imp, problems, created = import_orders(raw, customers, settings)
-                    if created:
+                    with st.spinner("Importing… (new addresses are looked up, ~1 s each)"):
+                        data = up.getvalue()
+                        c_new, c_upd, problems = import_customers(parse_customers_xlsx(data), customers, settings)
+                        imp, o_problems, o_new, o_upd = import_orders(parse_orders_xlsx(data), customers, settings)
+                        problems += o_problems
+                        created, updated = c_new + o_new, c_upd + o_upd
+                    if created or updated:
                         storage.save("customers", customers)
-                    ss.import_msg = (len(imp), problems, created)
+                    ss.import_msg = (len(imp), problems, created, updated)
                     doc["orders"] = imp
                     save_orders()
                     bump("orders_ver")
@@ -388,8 +391,9 @@ if page == PAGES[0]:
                 except Exception as e:
                     st.error(f"Import failed: {e}")
     if ss.get("import_msg"):
-        n, problems, created = ss.pop("import_msg")
-        st.success(f"Imported {n} orders" + (f", created {created} new customer(s)" if created else "") + ".")
+        n, problems, created, updated = ss.pop("import_msg")
+        st.success(f"Imported {n} orders" + (f", added {created} new customer(s)" if created else "")
+                   + (f", updated {updated} customer(s)" if updated else "") + ".")
         for p in problems:
             st.warning(p)
 
@@ -552,7 +556,9 @@ CUST_COLS = ["name", "area", "address", "phone", "default_qty_kg", "default_tw_f
 
 if page == PAGES[2]:
     st.caption("Edit directly in the table (add rows at the bottom, select a row + Delete key to remove), then **Save**. "
-               "Leave lat/lng empty and use **Geocode missing**, or paste `13.0827, 80.2707` / a Google Maps link in **Find coordinates**.")
+               "**Lat/Lng = the exact drop point** (Google Maps → long-press the gate → tap the numbers → copy) and is what the "
+               "planner routes to; the address text is only for the driver. Leave Lat/Lng empty and use **Geocode missing**, "
+               "or paste `13.0827, 80.2707` / a Google Maps link in **Find coordinates**. Prefer Excel? Use the round-trip below.")
     cdf = pd.DataFrame(customers, columns=CUST_COLS)
     ced = st.data_editor(
         cdf, key=f"cust_editor_{ss.cust_ver}", num_rows="dynamic", hide_index=True, width="stretch", height=420,
@@ -634,6 +640,36 @@ if page == PAGES[2]:
         st.success(f"Found coordinates for {found} customer(s).")
         if failed:
             st.warning("Not found (use Find coordinates and paste lat,lng): " + ", ".join(failed))
+
+    with st.expander("📗 Maintain the customer list in Excel (download → edit → upload)"):
+        x1, x2 = st.columns(2)
+        with x1:
+            st.download_button("⬇️ Download customers.xlsx", data=build_template(customers), file_name="customers.xlsx",
+                               mime=XLSX, width="stretch", help="Same file as the order template – edit the 'Customers' sheet")
+        with x2:
+            cup = st.file_uploader("Upload edited customers.xlsx", type=["xlsx"], label_visibility="collapsed", key="cust_upload")
+        st.caption("Columns: Customer · Area · Address · **Lat · Lng** · Phone · Usual kg · Window From/To · Notes. "
+                   "The name is the key – same name updates, new name adds. Lat/Lng win over the address; blank Lat/Lng + "
+                   "address = looked up automatically. Orders in the file are ignored here.")
+        if cup is not None and ss.get("last_cust_upload") != cup.file_id:
+            ss.last_cust_upload = cup.file_id
+            try:
+                with st.spinner("Updating customers…"):
+                    c_new, c_upd, problems = import_customers(parse_customers_xlsx(cup.getvalue()), customers, settings)
+                if c_new or c_upd:
+                    storage.save("customers", customers)
+                    ss.customers = customers
+                    bump("cust_ver")
+                    bump("orders_ver")
+                ss.cust_import_msg = (c_new, c_upd, problems)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Import failed: {e}")
+        if ss.get("cust_import_msg"):
+            c_new, c_upd, problems = ss.pop("cust_import_msg")
+            st.success(f"Customers: {c_new} added, {c_upd} updated.")
+            for p in problems:
+                st.warning(p)
 
     with st.expander("🔎 Find coordinates (address, landmark, 'lat, lng' or a Google Maps link)"):
         q = st.text_input("Search", placeholder="e.g. Saravana Bhavan, Anna Nagar, Chennai")

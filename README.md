@@ -79,10 +79,23 @@ Orders are auto-saved, so a browser refresh does not lose them.
 
 ## Adding customers accurately
 
-* Best: on your phone open Google Maps → long-press the shop → *Share* → paste the link into the address box → **🔍 Find**.
-* Or type "Landmark, Area" (e.g. *Kapaleeshwarar Temple, Mylapore*) → **🔍 Find**, then drag-check on the map.
-* Or **📍 Pick on map**.
-* Store a default quantity and time window per customer so daily entry is one click.
+The planner routes to **coordinates (Lat/Lng)**, not to the address text – the address is
+only printed for the driver. Three ways to give them, best first:
+
+1. **Exact drop point from Google Maps** – long-press the gate/loading bay → tap the numbers
+   at the top → copy → paste `13.0418, 80.2341` into the customer's Lat/Lng (or into
+   *Find coordinates* / the Excel *Location* column). Perfect for hotels with a back gate.
+2. **Google Maps share link** – paste it anywhere an address is accepted; coordinates are read
+   from the link.
+3. **Written address / landmark** – looked up automatically (Google if a key is set, otherwise
+   OpenStreetMap). Good for "Phoenix Marketcity, Velachery", unreliable for door numbers.
+
+**Maintain everything in Excel if you prefer:** *Excel template* / *Download customers.xlsx*
+gives a `Customers` sheet with every customer and their Lat/Lng. Edit it, add rows for new
+customers, upload it again (Plan → Import Excel, or Customers → the Excel round-trip): same
+name = update, new name = new customer, Lat/Lng win over the address, blank Lat/Lng +
+address = looked up. The `Orders` sheet's *Location* column does the same for one customer
+at a time (new customer, or move an existing one).
 
 ## Traffic data
 

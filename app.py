@@ -15,10 +15,10 @@ from flask import (Flask, jsonify, redirect, render_template_string, request, se
                    send_from_directory, session, url_for)
 
 import storage
-from export_xlsx import build_route_workbook, build_template, parse_orders_xlsx
+from export_xlsx import build_route_workbook, build_template, parse_customers_xlsx, parse_orders_xlsx
 from geocode import geocode
 from matrix import CACHE
-from planner import PlanError, import_orders, plan
+from planner import PlanError, import_customers, import_orders, plan
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(BASE, "static"), static_url_path="/static")
@@ -187,12 +187,16 @@ def import_orders_endpoint():
     f = request.files.get("file")
     if not f:
         return jsonify({"error": "no file"}), 400
-    raw = parse_orders_xlsx(f.read())
+    data = f.read()
     customers = storage.get_customers()
-    orders, problems, created = import_orders(raw, customers, storage.get_settings())
-    if created:
+    settings = storage.get_settings()
+    c_created, c_updated, problems = import_customers(parse_customers_xlsx(data), customers, settings)
+    orders, o_problems, o_created, o_updated = import_orders(parse_orders_xlsx(data), customers, settings)
+    created, updated = c_created + o_created, c_updated + o_updated
+    if created or updated:
         storage.save("customers", customers)
-    return jsonify({"orders": orders, "problems": problems, "customers_created": created, "customers": customers})
+    return jsonify({"orders": orders, "problems": problems + o_problems, "customers_created": created,
+                    "customers_updated": updated, "customers": customers})
 
 
 # ---------------------------------------------------------------------------

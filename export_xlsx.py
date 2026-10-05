@@ -110,34 +110,46 @@ def build_route_workbook(result: dict) -> bytes:
     return buf.getvalue()
 
 
+CUSTOMER_HEADERS = ["Customer", "Area", "Address", "Lat", "Lng", "Phone", "Usual kg",
+                    "Window From (HH:MM)", "Window To (HH:MM)", "Notes"]
+CUSTOMER_KEYS = ["name", "area", "address", "lat", "lng", "phone", "default_qty_kg",
+                 "default_tw_from", "default_tw_to", "notes"]
+
+
 def build_template(customers: list) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Orders"
     _header(ws, 1, ["Customer", "Qty (kg)", "Window From (HH:MM)", "Window To (HH:MM)",
-                    "Service (min)", "Notes", "Address (only for NEW customers)"])
+                    "Service (min)", "Notes", "Location (address, 'lat, lng' or Google Maps link)"])
     for i, c in enumerate(customers, start=2):
         ws.cell(row=i, column=1, value=c["name"])
         ws.cell(row=i, column=2, value=c.get("default_qty_kg") or None)
         ws.cell(row=i, column=3, value=c.get("default_tw_from") or None)
         ws.cell(row=i, column=4, value=c.get("default_tw_to") or None)
     ws2 = wb.create_sheet("Customers")
-    _header(ws2, 1, ["Customer", "Area", "Address", "Phone"])
+    _header(ws2, 1, CUSTOMER_HEADERS)
     for i, c in enumerate(customers, start=2):
-        for col, k in enumerate(["name", "area", "address", "phone"], 1):
-            ws2.cell(row=i, column=col, value=c.get(k, ""))
+        for col, k in enumerate(CUSTOMER_KEYS, 1):
+            v = c.get(k, "")
+            ws2.cell(row=i, column=col, value=(v if v not in ("", None) else None))
     if customers:
         dv = DataValidation(type="list", formula1=f"=Customers!$A$2:$A${len(customers) + 1}", allow_blank=True)
-        dv.error, dv.errorTitle = "Pick a customer from the list (or add an Address for new ones)", "Unknown customer"
+        dv.error, dv.errorTitle = "Pick a customer from the list (or add a Location for new ones)", "Unknown customer"
         dv.showErrorMessage = False
         ws.add_data_validation(dv)
         dv.add(f"A2:A{max(200, len(customers) + 100)}")
     ws3 = wb.create_sheet("How to use")
     for i, line in enumerate([
-        "1. Fill one row per delivery in the 'Orders' sheet. Delete rows for customers who have no order today.",
-        "2. Qty in kg. Leave windows blank for 'any time'. Times are 24h, e.g. 06:30.",
-        "3. For a brand-new customer type the name and fill the Address column – the planner will geocode it and add it to your customer list.",
-        "4. Upload this file with 'Import Excel' in the planner.",
+        "ORDERS sheet – one row per delivery. Delete rows for customers with no order today.",
+        "  Qty in kg. Leave windows blank for 'any time'. Times are 24h, e.g. 06:30.",
+        "  Location column: only needed for a NEW customer, or to move an existing one. Best: exact coordinates",
+        "  '13.0418, 80.2341' or a Google Maps link (Google Maps → long-press the gate → tap the numbers → copy).",
+        "  A written address also works but is less exact (especially without a Google key).",
+        "CUSTOMERS sheet – your customer master. Edit anything, add rows for new customers, then upload.",
+        "  Lat/Lng = exact drop point and win over the Address text. Blank Lat/Lng + Address = the planner looks it up.",
+        "  Names are the key: keep them identical to update a customer; a new name creates a new customer.",
+        "Upload this file with 'Import Excel' in the planner – both sheets are read.",
     ], start=1):
         ws3.cell(row=i, column=1, value=line)
     _autowidth(ws)
@@ -146,6 +158,44 @@ def build_template(customers: list) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _cell(v):
+    if v is None:
+        return ""
+    if hasattr(v, "strftime"):
+        return v.strftime("%H:%M")
+    return str(v).strip()
+
+
+def parse_customers_xlsx(data: bytes) -> list:
+    """Rows of the 'Customers' sheet (if present) as dicts with keys name, area, address, lat, lng, phone,
+    default_qty_kg, default_tw_from, default_tw_to, notes – strings, '' when blank."""
+    wb = load_workbook(io.BytesIO(data), data_only=True)
+    if "Customers" not in wb.sheetnames:
+        return []
+    rows = list(wb["Customers"].iter_rows(values_only=True))
+    if not rows:
+        return []
+    head = [str(h or "").strip().lower() for h in rows[0]]
+
+    def col(*names):
+        for n in names:
+            for i, h in enumerate(head):
+                if h == n or h.startswith(n):
+                    return i
+        return None
+
+    idx = {"name": col("customer", "name"), "area": col("area"), "address": col("address", "location"),
+           "lat": col("lat"), "lng": col("lng", "lon", "long"), "phone": col("phone", "mobile"),
+           "default_qty_kg": col("usual", "default qty", "qty", "kg"),
+           "default_tw_from": col("window from", "from"), "default_tw_to": col("window to", "to"), "notes": col("note")}
+    out = []
+    for r in rows[1:]:
+        rec = {k: (_cell(r[i]) if i is not None and i < len(r) else "") for k, i in idx.items()}
+        if rec["name"]:
+            out.append(rec)
+    return out
 
 
 def parse_orders_xlsx(data: bytes) -> list:
@@ -166,7 +216,7 @@ def parse_orders_xlsx(data: bytes) -> list:
 
     ci, cq, cf, ct, cs, cn, ca = (col("customer", "name"), col("qty", "quantity", "kg"),
                                   col("window from", "from"), col("window to", "to"),
-                                  col("service"), col("note"), col("address"))
+                                  col("service"), col("note"), col("address", "location"))
     out = []
     for r in rows[1:]:
         if ci is None or r[ci] in (None, ""):
