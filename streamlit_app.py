@@ -92,7 +92,7 @@ def require_login():
     with st.form("login"):
         pw = st.text_input("Team password", type="password")
         remember = st.checkbox("Keep me signed in on this device (adds a key to the link – bookmark it)", value=True)
-        ok = st.form_submit_button("Sign in", type="primary", use_container_width=True)
+        ok = st.form_submit_button("Sign in", type="primary", width="stretch")
     if ok:
         if pw and hmac.compare_digest(pw.strip(), APP_PASSWORD):
             st.session_state.authed = True
@@ -169,6 +169,53 @@ def to_hhmm(v) -> str:
     return s[:5] if re.match(r"^\d{1,2}:\d{2}", s) else ""
 
 
+HINTS = [
+    ("password authentication failed", "Neon rejected the login → the **password or the `ep-…` host in the string is wrong** "
+     "(Neon says this even for a mistyped host). In Neon open **Connect**, tick *Show password* or use the **copy button** – "
+     "don't select the on-screen text, it hides the password as •••. Still failing? Neon → Branches → *Roles & Databases* → "
+     "**Reset password** for `neondb_owner`, copy the new connection string and paste it into the secret again."),
+    ("could not translate host name", "The host name is wrong or the string was broken over two lines – paste it again as one line."),
+    ("timeout expired", "The database did not answer – check the Neon project is not deleted/suspended and the host is correct."),
+    ("timed out", "The database did not answer – check the Neon project is not deleted/suspended and the host is correct."),
+    ("pg_hba", "Add `?sslmode=require` at the end of the connection string."),
+    ("ssl", "Add `?sslmode=require` at the end of the connection string."),
+    ("invalid dsn", "The string is not a valid `postgresql://…` URL – paste only the URL (no `psql`, no quotes inside the quotes)."),
+    ("endpoint", "Neon could not start the database compute – open the Neon dashboard and check the project/branch is active."),
+    ("database", "The database name after the last `/` does not exist – Neon's default is `neondb`."),
+]
+
+
+def show_db_problem(err: str):
+    info = storage.db_info()
+    st.markdown("## 🧅 Onion Route Planner")
+    st.error("**Cannot connect to the database** – the `DATABASE_URL` secret is not accepted by the server.")
+    st.code(err, language=None)
+    low = err.lower()
+    for key, hint in HINTS:
+        if key in low:
+            st.info(hint)
+            break
+    for odd in info.get("looks_odd", []):
+        st.warning(f"Your secret {odd}.")
+    with st.expander("What the app read from the secret (password hidden)", expanded=True):
+        st.markdown(f"- host: `{info.get('host', '?')}` · port `{info.get('port', '?')}`  \n"
+                    f"- user: `{info.get('user', '?')}` · database: `{info.get('database', '?')}` · sslmode: `{info.get('sslmode') or 'missing'}`  \n"
+                    f"- password: {info.get('password_len', 0)} characters (Neon passwords look like `npg_…`, 15–20 characters)  \n"
+                    f"- expected shape: `postgresql://neondb_owner:npg_xxxx@ep-xxxx-pooler.<region>.aws.neon.tech/neondb?sslmode=require`")
+    st.markdown("Fix the secret under **Manage app → Settings → Secrets** (the app restarts by itself), then press Retry.")
+    if st.button("🔁 Retry", type="primary"):
+        st.rerun()
+    st.stop()
+
+
+if not st.session_state.get("db_ok"):           # one connection check per browser session
+    try:
+        db_err = storage.db_check()
+    except Exception as _e:
+        db_err = f"{type(_e).__name__}: {' '.join(str(_e).split())}"
+    if db_err:
+        show_db_problem(db_err)
+    st.session_state.db_ok = True
 load_all()
 ss = st.session_state
 customers = ss.customers
@@ -184,10 +231,10 @@ label_to_cust = {cust_label(c): c for c in customers}
 with st.sidebar:
     st.markdown("### 🧅 Onion Route Planner")
     st.caption(f"Storage: **{storage.backend_description()}**  \nData loaded at {ss.loaded_at} IST")
-    if st.button("🔄 Reload data", use_container_width=True, help="Pull the latest orders / customers saved by a colleague"):
+    if st.button("🔄 Reload data", width="stretch", help="Pull the latest orders / customers saved by a colleague"):
         load_all(force=True)
         st.rerun()
-    if APP_PASSWORD and st.button("Sign out", use_container_width=True):
+    if APP_PASSWORD and st.button("Sign out", width="stretch"):
         ss.authed = False
         st.query_params.clear()
         st.rerun()
@@ -269,7 +316,7 @@ if page == PAGES[0]:
         st.info("Add customers in the 👥 Customers tab first.")
     df = orders_to_df(doc["orders"])
     edited = st.data_editor(
-        df, key=f"orders_editor_{ss.orders_ver}", num_rows="dynamic", hide_index=True, use_container_width=True,
+        df, key=f"orders_editor_{ss.orders_ver}", num_rows="dynamic", hide_index=True, width="stretch",
         column_config={
             "Customer": st.column_config.SelectboxColumn("Customer", options=labels, required=True, width="medium"),
             "Qty (kg)": st.column_config.NumberColumn("Qty (kg)", min_value=0, step=10, format="%d"),
@@ -299,7 +346,7 @@ if page == PAGES[0]:
 
     b1, b2, b3, b4 = st.columns(4)
     with b1:
-        if st.button("➕ Add all regulars", use_container_width=True, help="One order per customer with their usual quantity"):
+        if st.button("➕ Add all regulars", width="stretch", help="One order per customer with their usual quantity"):
             have = {o["customer_id"] for o in doc["orders"]}
             for c in customers:
                 if c["id"] not in have and float(c.get("default_qty_kg") or 0) > 0:
@@ -311,7 +358,7 @@ if page == PAGES[0]:
             ss.result = None
             st.rerun()
     with b2:
-        if st.button("🗑️ Clear orders", use_container_width=True, disabled=not doc["orders"]):
+        if st.button("🗑️ Clear orders", width="stretch", disabled=not doc["orders"]):
             doc["orders"] = []
             save_orders()
             bump("orders_ver")
@@ -319,9 +366,9 @@ if page == PAGES[0]:
             st.rerun()
     with b3:
         st.download_button("📄 Excel template", data=build_template(customers), file_name="orders_template.xlsx",
-                           mime=XLSX, use_container_width=True)
+                           mime=XLSX, width="stretch")
     with b4:
-        with st.popover("📥 Import Excel", use_container_width=True):
+        with st.popover("📥 Import Excel", width="stretch"):
             up = st.file_uploader("Filled template (.xlsx)", type=["xlsx"], label_visibility="collapsed")
             if up is not None and ss.get("last_upload") != up.file_id:
                 ss.last_upload = up.file_id
@@ -348,7 +395,7 @@ if page == PAGES[0]:
 
     # ---- optimise ---------------------------------------------------------
     st.divider()
-    if st.button("⚡ Optimise routes", type="primary", use_container_width=True, disabled=not doc["orders"]):
+    if st.button("⚡ Optimise routes", type="primary", width="stretch", disabled=not doc["orders"]):
         run_settings = dict(settings)
         run_settings.update({"date": doc["date"], "departure_time": dep.strftime("%H:%M"),
                              "strategy": strategy, "objective": objective})
@@ -368,7 +415,7 @@ if page == PAGES[0]:
         st.error(msg)
         if extra.get("dropped"):
             st.dataframe(pd.DataFrame(extra["dropped"])[["customer", "qty_kg", "window", "reason"]],
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width="stretch")
         if extra.get("missing"):
             st.warning("Customers without coordinates: " + ", ".join(extra["missing"]) +
                        " → fix them in 👥 Customers (📍 Geocode missing).")
@@ -394,12 +441,12 @@ if page == PAGES[0]:
         if res.get("dropped"):
             st.error(f"{len(res['dropped'])} order(s) could not be fitted – add a vehicle/trip, widen the window or deliver tomorrow:")
             st.dataframe(pd.DataFrame(res["dropped"])[["customer", "qty_kg", "window", "reason"]],
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width="stretch")
 
         dl1, dl2 = st.columns([1, 2])
         with dl1:
             st.download_button("⬇️ Download Excel plan", data=ss.get("result_xlsx") or build_route_workbook(res),
-                               file_name=f"routes_{sm['date']}.xlsx", mime=XLSX, use_container_width=True)
+                               file_name=f"routes_{sm['date']}.xlsx", mime=XLSX, width="stretch")
         with dl2:
             st.markdown("".join(f'<span class="chip" style="background:{r["color"]}">{r["vehicle"]["name"]}</span>'
                                 for r in res["routes"] if r["used"]), unsafe_allow_html=True)
@@ -415,7 +462,7 @@ if page == PAGES[0]:
                          "kg": s["qty_kg"], "Window": s.get("window") or "any", "Arrive": s["arrival"],
                          "Leave": s["depart"], "Wait": s.get("wait_min") or 0, "Leg km": s["leg_km"], "Cum km": s["cum_km"]}
                         for s in rt["stops"]]
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True,
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
                              column_config={"kg": st.column_config.NumberColumn(format="%g"),
                                             "Leg km": st.column_config.NumberColumn(format="%.1f"),
                                             "Cum km": st.column_config.NumberColumn(format="%.1f")})
@@ -425,12 +472,12 @@ if page == PAGES[0]:
                 l1, l2 = st.columns([1, 1])
                 with l1:
                     st.link_button("💬 Send to driver on WhatsApp",
-                                   "https://wa.me/?text=" + urllib.parse.quote(rt["text"]), use_container_width=True)
+                                   "https://wa.me/?text=" + urllib.parse.quote(rt["text"]), width="stretch")
                 with l2:
                     urls = rt["gmaps_urls"]
                     for i, u in enumerate(urls, 1):
                         st.link_button(f"🧭 Google Maps navigation{f' (part {i}/{len(urls)})' if len(urls) > 1 else ''}", u,
-                                       use_container_width=True)
+                                       width="stretch")
                 st.code(rt["text"], language=None)   # has a copy button
 
         unused = [r["vehicle"]["name"] for r in res["routes"] if not r["used"]]
@@ -508,7 +555,7 @@ if page == PAGES[2]:
                "Leave lat/lng empty and use **Geocode missing**, or paste `13.0827, 80.2707` / a Google Maps link in **Find coordinates**.")
     cdf = pd.DataFrame(customers, columns=CUST_COLS)
     ced = st.data_editor(
-        cdf, key=f"cust_editor_{ss.cust_ver}", num_rows="dynamic", hide_index=True, use_container_width=True, height=420,
+        cdf, key=f"cust_editor_{ss.cust_ver}", num_rows="dynamic", hide_index=True, width="stretch", height=420,
         column_config={
             "name": st.column_config.TextColumn("Customer", required=True, width="medium"),
             "area": st.column_config.TextColumn("Area"),
@@ -546,7 +593,7 @@ if page == PAGES[2]:
 
     s1, s2, s3 = st.columns([1, 1, 2])
     with s1:
-        if st.button("💾 Save customers", type="primary", use_container_width=True):
+        if st.button("💾 Save customers", type="primary", width="stretch"):
             new, errs = _clean_customers(ced)
             if errs:
                 for e in errs:
@@ -560,7 +607,7 @@ if page == PAGES[2]:
                 time.sleep(0.6)
                 st.rerun()
     with s2:
-        if st.button("📍 Geocode missing", use_container_width=True, help="Look up coordinates for customers without lat/lng"):
+        if st.button("📍 Geocode missing", width="stretch", help="Look up coordinates for customers without lat/lng"):
             new, errs = _clean_customers(ced)
             todo = [c for c in new if not (c.get("lat") and c.get("lng"))]
             if not todo:
@@ -618,7 +665,7 @@ if page == PAGES[3]:
 
         st.markdown("#### Vehicles")
         vdf = pd.DataFrame(settings.get("vehicles") or [], columns=["id", "name", "capacity_kg"])
-        ved = st.data_editor(vdf, key=f"veh_editor_{ss.set_ver}", num_rows="dynamic", hide_index=True, use_container_width=True,
+        ved = st.data_editor(vdf, key=f"veh_editor_{ss.set_ver}", num_rows="dynamic", hide_index=True, width="stretch",
                              column_config={"id": st.column_config.TextColumn("ID", width="small"),
                                             "name": st.column_config.TextColumn("Name", required=True),
                                             "capacity_kg": st.column_config.NumberColumn("Capacity (kg)", min_value=1, step=50, format="%d")})
@@ -659,12 +706,12 @@ if page == PAGES[3]:
         with st.expander("Hourly congestion profile (× free-flow time, 0–23 h)"):
             prof = settings.get("traffic_profile") or storage.CHENNAI_PROFILE
             pdf = pd.DataFrame({"Hour": [f"{h:02d}:00" for h in range(24)], "Factor": [float(x) for x in prof[:24]]})
-            ped = st.data_editor(pdf, key=f"prof_editor_{ss.set_ver}", hide_index=True, use_container_width=True, height=300,
+            ped = st.data_editor(pdf, key=f"prof_editor_{ss.set_ver}", hide_index=True, width="stretch", height=300,
                                  column_config={"Hour": st.column_config.TextColumn(disabled=True),
                                                 "Factor": st.column_config.NumberColumn(min_value=0.5, max_value=4.0, step=0.05, format="%.2f")},
                                  disabled=["Hour"])
 
-        if st.form_submit_button("💾 Save settings", type="primary", use_container_width=True):
+        if st.form_submit_button("💾 Save settings", type="primary", width="stretch"):
             s = dict(settings)
             s["depot"] = {"name": depot_name.strip() or "Depot", "address": depot_addr.strip(), "lat": depot_lat, "lng": depot_lng}
             vehicles = []

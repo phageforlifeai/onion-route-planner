@@ -121,6 +121,49 @@ def secret_key() -> str:
     return s["key"]
 
 
+def db_info() -> dict:
+    """Password-free description of DATABASE_URL for diagnostics screens."""
+    from urllib.parse import urlparse, parse_qs
+    info = {"configured": bool(DATABASE_URL)}
+    if not DATABASE_URL:
+        return info
+    try:
+        u = urlparse(DATABASE_URL)
+        q = parse_qs(u.query)
+        info.update({"scheme": u.scheme, "host": u.hostname or "", "port": u.port or 5432, "user": u.username or "",
+                     "database": (u.path or "/").lstrip("/"), "sslmode": (q.get("sslmode") or [""])[0],
+                     "password_len": len(u.password or ""), "password_masked": bool(u.password) and any(ch in u.password for ch in "*•")})
+    except Exception as e:
+        info["parse_error"] = str(e)
+    info["looks_odd"] = [m for m, bad in (
+        ("starts with 'psql' – paste only the postgresql://… part", DATABASE_URL.lower().startswith("psql")),
+        ("contains spaces or quotes – the string got wrapped or quoted twice", any(c in DATABASE_URL for c in " '\"\n\t")),
+        ("does not start with postgresql:// or postgres://", not DATABASE_URL.lower().startswith(("postgresql://", "postgres://"))),
+        ("password looks masked (•••/***) – use Neon's copy button, not the displayed text", info.get("password_masked", False)),
+        ("missing ?sslmode=require", "sslmode" not in DATABASE_URL.lower()),
+    ) if bad]
+    return info
+
+
+def db_check():
+    """None if the database answers, else a sanitised error string (password removed)."""
+    if not DATABASE_URL:
+        return None
+    try:
+        _pg_exec("SELECT 1", fetch=True)
+        return None
+    except Exception as e:
+        msg = " ".join(str(e).split())
+        from urllib.parse import urlparse
+        try:
+            pw = urlparse(DATABASE_URL).password
+            if pw:
+                msg = msg.replace(pw, "***")
+        except Exception:
+            pass
+        return f"{type(e).__name__}: {msg}"
+
+
 def backend_description() -> str:
     if DATABASE_URL:
         return "Postgres"
