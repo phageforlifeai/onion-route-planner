@@ -14,9 +14,7 @@ Every origin→destination pair is cached (matrix_cache in the data store), so a
 customer base costs (almost) zero API calls on subsequent days.
 """
 import datetime as dt
-import json
 import math
-import os
 import threading
 import time
 

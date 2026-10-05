@@ -44,8 +44,22 @@ your real customers in the **Customers** tab.
 Run it in one place and everyone opens the URL in a browser – phones get a
 dedicated **Plan · Map · Routes** layout and can *Add to Home Screen*.
 Set `APP_PASSWORD` to require a team login. See **[DEPLOY.md](DEPLOY.md)** for
-the options: office PC on Wi-Fi (free), Tailscale remote access (free), Railway /
-Render cloud hosting (~$5–7/month, recommended), PythonAnywhere, or Docker on a VPS.
+the options: **Streamlit Community Cloud + free Neon Postgres (₹0, nothing to keep
+switched on – uses `streamlit_app.py`)**, office PC on Wi-Fi (free), Tailscale
+remote access (free), Railway / Render cloud hosting (~$5–7/month, always-on),
+PythonAnywhere, or Docker on a VPS.
+
+Two front ends, one engine:
+
+| | `app.py` (Flask) | `streamlit_app.py` (Streamlit) |
+|---|---|---|
+| Best for | office PC / Docker / Railway / Render | **Streamlit Community Cloud (free)** |
+| Map | Leaflet, live in the page | folium |
+| Data | `data/*.json` or Postgres | Postgres (`DATABASE_URL`) or `data/*.json` |
+| Login | shared password, cookie | shared password, bookmarkable `?k=` link |
+
+Both read/write the same customers, orders and settings if they point at the same
+database, so you can run Flask on the office PC *and* the Streamlit copy in the cloud.
 
 ```bash
 APP_PASSWORD=YourPassword python app.py     # Windows: set APP_PASSWORD=YourPassword && python app.py
@@ -100,7 +114,10 @@ Distance Matrix – more than enough for 20 customers/day with caching.
 
 ```
 app.py          Flask server + REST API (/api/optimize, /api/customers, …), login
-DEPLOY.md       How to run it for the team: office PC, Tailscale, Railway/Render, Docker
+streamlit_app.py  Streamlit front end (Streamlit Community Cloud) – same engine, Postgres via DATABASE_URL
+planner.py      Shared planning logic: orders → matrix → solver → routes/driver text (used by both UIs)
+DEPLOY.md       How to run it for the team: Streamlit Cloud + Neon (free), office PC, Tailscale, Railway/Render, Docker
+.streamlit/     config.toml (theme) and secrets.toml.example
 Dockerfile, Procfile, render.yaml, docker-compose.yml   deployment recipes
 solver.py       OR-Tools multi-trip CVRPTW model
 matrix.py       Travel-time matrix: Google ⇄ OSRM ⇄ offline fallback, caching, Chennai profile

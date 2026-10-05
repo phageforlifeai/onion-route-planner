@@ -16,3 +16,6 @@ data/matrix_cache.json
 Thumbs.db
 data/secret.json
 *.zip
+
+# streamlit secrets
+.streamlit/secrets.toml

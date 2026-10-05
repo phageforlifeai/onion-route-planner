@@ -17,11 +17,74 @@ anyone with the link can see and change your customers.
 
 | Option | Cost | Works from | PC must stay on? | Setup effort |
 |---|---|---|---|---|
+| **F. Streamlit Community Cloud + Neon** ⭐ free & no PC | ₹0 | Anywhere, 24×7 (wakes in ~30–60 s after 12 h idle) | No | 20 min, no server skills |
 | **A. Office PC on Wi-Fi** | ₹0 | Same Wi-Fi only | Yes | 5 min |
 | **B. Office PC + Tailscale** | ₹0 | Anywhere | Yes | 15 min |
-| **C. Cloud – Railway or Render** ⭐ recommended | ≈ $5–7 / month | Anywhere, 24×7 | No | 15 min, no server skills |
+| **C. Cloud – Railway or Render** (always-on, no wake-up) | ≈ $5–7 / month | Anywhere, 24×7 | No | 15 min, no server skills |
 | **D. Cloud – PythonAnywhere** | ₹0 (needs Google key) or $5 | Anywhere, 24×7 | No | 25 min |
 | **E. Your own server / VPS (Docker)** | ≈ $4–6 / month | Anywhere, 24×7 | No | 20 min, basic Linux |
+
+---
+
+## F. Streamlit Community Cloud + Neon Postgres (free, nothing to keep switched on)
+
+`streamlit_app.py` is a second front end for the **same** engine, written for
+[Streamlit Community Cloud](https://share.streamlit.io) (free hosting straight
+from this GitHub repo). Streamlit's disk is wiped on every restart, so the data
+lives in a free [Neon](https://neon.tech) Postgres database via `DATABASE_URL`
+(the Flask app can use the very same database).
+
+Free-tier facts: 1 GB RAM per app, the app **sleeps after ~12 h without
+visitors** and takes 30–60 s to wake on the next visit, and a free workspace
+may have **one private app** (plus unlimited public ones). The password gate
+works either way – keep the app private if you can.
+
+### F.1 Database (Neon, 5 min)
+1. <https://neon.tech> → sign up (GitHub/Google) → **New project**.
+   Name `onion-planner`, Postgres 16/17, region **US East (N. Virginia)** or
+   **US West (Oregon)** – Streamlit's servers are in the USA, the database talks
+   to *them*, not to your phones.
+2. On the project dashboard click **Connect** → choose **Connection string**
+   (keep *pooled connection* ticked) → copy the line that looks like
+   `postgresql://neondb_owner:npg_xxx@ep-xxx-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require`.
+   That whole line is your `DATABASE_URL`. Nothing else to create – the app
+   makes its own table on first start.
+
+### F.2 App (Streamlit Community Cloud, 10 min)
+1. <https://share.streamlit.io> → **Continue with GitHub** → allow access to
+   the `onion-route-planner` repository when asked.
+2. **Create app** → *Deploy a public app from GitHub* (don't worry, see step 5):
+   * Repository: `phageforlifeai/onion-route-planner`
+   * Branch: `main`
+   * Main file path: `streamlit_app.py`
+   * App URL: pick something like `onion-routes` → `https://onion-routes.streamlit.app`
+3. **Advanced settings…** → Python version **3.12** → in the **Secrets** box paste:
+   ```toml
+   APP_PASSWORD = "your-team-password"
+   DATABASE_URL = "postgresql://…neon.tech/neondb?sslmode=require"
+   GOOGLE_MAPS_API_KEY = ""          # optional, for historic-traffic routing
+   ```
+4. **Deploy**. The first build installs OR-Tools etc. and takes 3–5 minutes;
+   watch the log on the right. When it opens you'll see the password screen.
+5. Make it private: app menu (⋮ bottom-right / *Manage app*) → **Settings** →
+   **Sharing** → *Who can view this app* → **Only specific people**, then add
+   your team's e-mail addresses (they sign in once with that Google/GitHub/e-mail
+   account). You can also leave it public – the team password still applies.
+6. Every `git push` to `main` redeploys automatically. Secrets can be changed
+   any time under *Settings → Secrets* (the app restarts).
+
+### F.3 Phones
+Open the URL, sign in once with *Keep me signed in* ticked – the address now
+ends in `?k=…`. **Add to Home Screen / bookmark that address** and it opens
+straight into the Plan screen next time. The first open after a quiet night
+takes 30–60 s while the free server wakes up.
+
+### F.4 Local run of the Streamlit version
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py          # uses ./data/*.json like the Flask app
+# with a database:  copy .streamlit/secrets.toml.example → .streamlit/secrets.toml and fill it in
+```
 
 ---
 

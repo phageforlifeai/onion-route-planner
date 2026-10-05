@@ -1,0 +1,15 @@
+[theme]
+primaryColor = "#8b4513"
+backgroundColor = "#fffaf3"
+secondaryBackgroundColor = "#f3e7d9"
+textColor = "#2b1d12"
+
+[server]
+headless = true
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "viewer"
