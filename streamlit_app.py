@@ -59,8 +59,9 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
 STRATEGIES = {"lowest_cost": "Lowest cost (km / time)", "fewest_vehicles": "Fewest vehicles",
               "balanced": "Balanced workload"}
 OBJECTIVES = {"time": "Travel time (traffic-aware)", "distance": "Distance (km)"}
-TRAFFIC_SOURCES = {"auto": "Auto (Google if key set, else OSRM)", "google": "Google Maps (historic traffic)",
-                   "osrm": "OSRM + Chennai hour profile (free)", "haversine": "Straight-line estimate (offline)"}
+TRAFFIC_SOURCES = {"auto": "Auto (learned history → Google → OSRM)", "google": "Google Maps (historical traffic)",
+                   "historical": "Learned historical traffic", "osrm": "OSRM + Chennai hour profile (free)",
+                   "haversine": "Straight-line estimate (offline)"}
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 st.markdown("""

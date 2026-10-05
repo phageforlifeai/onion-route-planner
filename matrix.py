@@ -215,6 +215,43 @@ def osrm_matrix(points, settings, depart_dt):
 
 
 # ---------------------------------------------------------------------------
+# Provider 2b: learned historical traffic over cached OSRM travel times
+# ---------------------------------------------------------------------------
+def historical_matrix(points, settings, depart_dt):
+    base_result = osrm_matrix(points, settings, depart_dt)
+    dist = base_result["dist_m"]
+    ff = [[0] * len(points) for _ in points]
+    for i in range(len(points)):
+        for j in range(len(points)):
+            if i != j:
+                e = CACHE.get(_Cache.k("osrm", points[i], points[j], "ff"))
+                if e:
+                    ff[i][j] = e["t"]
+    tim = [[0] * len(points) for _ in points]
+    learned = 0
+    total = len(points) * (len(points) - 1)
+    fallback_factor = float(base_result.get("traffic_factor") or 1.0)
+    for i in range(len(points)):
+        for j in range(len(points)):
+            if i == j:
+                continue
+            p = traffic_history.predict(points[i], points[j], depart_dt,
+                                        min_observations=int(settings.get("traffic_history_min_obs", 3)),
+                                        max_age_days=int(settings.get("traffic_history_max_age_days", 180)))
+            if p and ff[i][j] > 0:
+                tim[i][j] = int(round(ff[i][j] * p["factor"]))
+                learned += 1
+            else:
+                tim[i][j] = int(round(ff[i][j] * fallback_factor))
+    coverage = learned / total if total else 0
+    minimum = float(settings.get("traffic_history_min_coverage", 0.25))
+    if coverage < minimum:
+        raise RuntimeError(f"historical traffic coverage {learned}/{total} ({coverage:.0%}) is below the {minimum:.0%} minimum")
+    return {"dist_m": dist, "time_s": tim, "source": "historical", "traffic_factor": None,
+            "note": (f"Learned historical traffic for {depart_dt.strftime('%a %H:%M')}: "
+                     f"{learned}/{total} route pairs ({coverage:.0%}) learned; unlearned pairs use the editable Chennai profile.")}
+
+# ---------------------------------------------------------------------------
 # Provider 3: straight-line fallback
 # ---------------------------------------------------------------------------
 def haversine_m(a, b) -> float:
@@ -253,9 +290,11 @@ def build_matrix(points, settings, depart_dt):
     source = settings.get("traffic_source", "auto")
     key = (settings.get("google_api_key") or "").strip()
     if source == "auto":
-        order = (["google"] if key else []) + ["osrm", "haversine"]
+        order = (["historical", "google"] if key else ["historical"]) + ["osrm", "haversine"]
     elif source == "google":
-        order = ["google", "osrm", "haversine"]
+        order = ["google", "historical", "osrm", "haversine"]
+    elif source == "historical":
+        order = ["historical", "google", "osrm", "haversine"]
     elif source == "osrm":
         order = ["osrm", "haversine"]
     else:
@@ -266,6 +305,8 @@ def build_matrix(points, settings, depart_dt):
         try:
             if src == "google":
                 res = google_matrix(points, key, depart_dt, settings)
+            elif src == "historical":
+                res = historical_matrix(points, settings, depart_dt)
             elif src == "osrm":
                 res = osrm_matrix(points, settings, depart_dt)
             else:
