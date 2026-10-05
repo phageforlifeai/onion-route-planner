@@ -21,7 +21,6 @@ import time
 import requests
 
 import storage
-import traffic_history
 from storage import CHENNAI_PROFILE
 
 OSRM_URL = "https://router.project-osrm.org"
@@ -149,7 +148,6 @@ def google_matrix(points, api_key, depart_dt, settings):
                 t = el.get("duration_in_traffic", el["duration"])["value"]
                 dist[i][j], tim[i][j] = int(d), int(t)
                 CACHE.put(_Cache.k("google", points[i], points[j], bucket), d, t)
-                traffic_history.record(points[i], points[j], sample, el["duration"]["value"], t, d)
     if calls:
         CACHE.flush()
     return {
@@ -215,6 +213,43 @@ def osrm_matrix(points, settings, depart_dt):
                  f"(departure {depart_dt.strftime('%H:%M')}, {'Sunday' if sunday else 'weekday'} profile)"),
     }
 
+
+# ---------------------------------------------------------------------------
+# Provider 2b: learned historical traffic over cached OSRM travel times
+# ---------------------------------------------------------------------------
+def historical_matrix(points, settings, depart_dt):
+    base_result = osrm_matrix(points, settings, depart_dt)
+    dist = base_result["dist_m"]
+    ff = [[0] * len(points) for _ in points]
+    for i in range(len(points)):
+        for j in range(len(points)):
+            if i != j:
+                e = CACHE.get(_Cache.k("osrm", points[i], points[j], "ff"))
+                if e:
+                    ff[i][j] = e["t"]
+    tim = [[0] * len(points) for _ in points]
+    learned = 0
+    total = len(points) * (len(points) - 1)
+    fallback_factor = float(base_result.get("traffic_factor") or 1.0)
+    for i in range(len(points)):
+        for j in range(len(points)):
+            if i == j:
+                continue
+            p = traffic_history.predict(points[i], points[j], depart_dt,
+                                        min_observations=int(settings.get("traffic_history_min_obs", 3)),
+                                        max_age_days=int(settings.get("traffic_history_max_age_days", 180)))
+            if p and ff[i][j] > 0:
+                tim[i][j] = int(round(ff[i][j] * p["factor"]))
+                learned += 1
+            else:
+                tim[i][j] = int(round(ff[i][j] * fallback_factor))
+    coverage = learned / total if total else 0
+    minimum = float(settings.get("traffic_history_min_coverage", 0.25))
+    if coverage < minimum:
+        raise RuntimeError(f"historical traffic coverage {learned}/{total} ({coverage:.0%}) is below the {minimum:.0%} minimum")
+    return {"dist_m": dist, "time_s": tim, "source": "historical", "traffic_factor": None,
+            "note": (f"Learned historical traffic for {depart_dt.strftime('%a %H:%M')}: "
+                     f"{learned}/{total} route pairs ({coverage:.0%}) learned; unlearned pairs use the editable Chennai profile.")}
 
 # ---------------------------------------------------------------------------
 # Provider 3: straight-line fallback
