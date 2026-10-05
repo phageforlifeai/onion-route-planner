@@ -224,9 +224,12 @@ DEFAULT_SETTINGS = {
     "solver_seconds": 8,
     "trips_per_vehicle": 2,           # allow a reload at the depot for a 2nd trip
     "reload_min": 20,                 # minutes to reload at the depot
-    "traffic_source": "auto",         # auto | google | osrm | haversine
+    "traffic_source": "auto",         # auto | google | historical | osrm | haversine
     "google_api_key": "",
-    "traffic_model": "best_guess",    # Google: best_guess | pessimistic | optimistic
+    "traffic_model": "best_guess",
+    "traffic_history_min_obs": 3,
+    "traffic_history_max_age_days": 180,
+    "traffic_history_min_coverage": 0.25,    # Google: best_guess | pessimistic | optimistic
     "traffic_sample_offset_min": 45,  # Google traffic is sampled this long after departure (mid-route)
     "osrm_base_factor": 1.10,         # OSRM free-flow is slightly optimistic for Indian roads
     "base_speed_kmh": 30,             # used only by the straight-line fallback
