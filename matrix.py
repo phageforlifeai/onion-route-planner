@@ -21,6 +21,7 @@ import time
 import requests
 
 import storage
+import traffic_history
 from storage import CHENNAI_PROFILE
 
 OSRM_URL = "https://router.project-osrm.org"
@@ -148,6 +149,7 @@ def google_matrix(points, api_key, depart_dt, settings):
                 t = el.get("duration_in_traffic", el["duration"])["value"]
                 dist[i][j], tim[i][j] = int(d), int(t)
                 CACHE.put(_Cache.k("google", points[i], points[j], bucket), d, t)
+                traffic_history.record(points[i], points[j], sample, el["duration"]["value"], t, d)
     if calls:
         CACHE.flush()
     return {
